@@ -1,0 +1,28 @@
+# Data and results are not version-controlled
+*.rds
+*.RData
+*.rda
+*.h5
+*.h5ad
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.pdf
+*.png
+*.tif
+*.tiff
+*.zarr/
+output-XETG*/
+data/
+results/
+
+# R / RStudio
+.Rhistory
+.Rproj.user/
+.RData
+.Ruserdata
+
+# OS
+.DS_Store
+Thumbs.db
