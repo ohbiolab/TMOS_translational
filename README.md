@@ -124,4 +124,5 @@ Processed objects are not included in this repository. Patient-level clinical da
 
 ## Contact
 
-Hassan Abushukair, University of Oklahoma Health Sciences Center.
+Hassan Abushukair, University of Oklahoma Health Sciences Center: hassanmohammed-abushukair@ou.edu
+Tae Gyu Oh, University of Oklahoma Health Sciences Center: TaeGyu-Oh@ou.edu 
