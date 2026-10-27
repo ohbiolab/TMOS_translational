@@ -6,11 +6,11 @@
 #   4A, 4G                   -      Xenium Explorer images, no code
 #   4B, 4C; S4A              1      Clean/fig4/fig4.R
 #   4D, 4E, 4H; S4B, S4D     2a     Clean/fig4/fig4_prox.R
-#   S4I                      2b     Clean/fig4/fig4_prox.R (last section)
+#   S4H                      2b     Clean/fig4/fig4_prox.R (last section)
 #   4F                       3      Clean/reviewer_comments/rev2.3_spatial.R
 #   S5A, S5B                 4a     Clean/reviewer_comments/spatial_adjustment.R
 #   4I, 4J; S5C-S5G          4b     Clean/reviewer_comments/spatial_adjustment.R (standalone section)
-#   4K; S4H                  5      Clean/reviewer_comments/R1.1_spatial_to_sc.R
+#   4K                       5      Clean/reviewer_comments/R1.1_spatial_to_sc.R
 #   4L; S4E, S4G             6      Clean/fig4/niche_to_pbmc/fig4_spatial_to_pbmc_il17.R
 #   S4C                      7      Clean/fig4/th17_homeo_patho.R
 #   S4F                      8      Clean/fig4/il17_receptor_ligand.R
@@ -1406,7 +1406,7 @@ rm(list = setdiff(ls(), c("TMOS_DIR", "fix_fov"))); invisible(gc())
 
 
 ##############################################################################
-##  PART 2b - Fig S4I: CM signature gradient by distance to IL-17 hubs
+##  PART 2b - Fig S4H: CM signature gradient by distance to IL-17 hubs
 ##  (Clean/fig4/fig4_prox.R, last section; uses the object written by Part 2a)
 ##############################################################################
 
@@ -2460,25 +2460,25 @@ rm(list = setdiff(ls(), c("TMOS_DIR", "fix_fov"))); invisible(gc())
 
 
 ##############################################################################
-##  PART 5 - Fig 4K; Fig S4H: N4-like IL-17 program in heart scRNA-seq, TMOS vs MC
+##  PART 5 - Fig 4K: IL-17 signaling-related program in N4-like T/NK and myeloid cells, TMOS vs MC (heart scRNA-seq)
 ##  (Clean/reviewer_comments/R1.1_spatial_to_sc.R)
 ##############################################################################
 
-
 # =========================================================
-# IL-17/MAPK module score in N4-like cells: TMOS vs MC (scRNA heart)
-# Myeloid and T/NK analyzed separately
+# IL-17 signaling-related program in N4-like cells: TMOS vs MC (scRNA heart)
+# T/NK and myeloid cells analysed separately
 # =========================================================
 library(Seurat)
 library(dplyr)
 library(ggplot2)
+library(patchwork)
 library(openxlsx)
 
 setwd(file.path(TMOS_DIR, "Clean/reviewer_comments"))
 
 # ---- settings ----
 grp_cols    <- c("MC" = "#4682B4", "TMOS" = "#b30000")
-cts         <- c("Myeloid", "T/NK Lymphocytes")
+cts         <- c("T/NK Lymphocytes", "Myeloid")
 min_cells   <- 10    # min cells of a type per donor
 min_n4like  <- 5     # min N4-like cells per donor
 n4_top_frac <- 0.25  # top 25% of N4 score = N4-like
@@ -2506,7 +2506,7 @@ sc <- DietSeurat(sc, layers = c("counts", "data"))
 md <- sc@meta.data
 
 genes_found <- data.frame(
-  gene_set = c("IL-17/MAPK module", "N4 signature"),
+  gene_set = c("IL-17 signaling-related program (43 genes)", "N4 signature"),
   n_total  = c(length(module_genes), length(n4_genes)),
   n_found  = c(sum(module_genes %in% rownames(sc)), sum(n4_genes %in% rownames(sc))),
   missing  = c(paste(setdiff(module_genes, rownames(sc)), collapse = ", "),
@@ -2514,9 +2514,12 @@ genes_found <- data.frame(
 )
 print(genes_found)
 
+# abundance of each cell type as a fraction of all cardiac cells, per donor
 burden <- md %>%
   group_by(sample_id) %>%
-  summarise(immune_frac = mean(cell_type_unified %in% cts), .groups = "drop")
+  summarise(`T/NK Lymphocytes` = mean(cell_type_unified == "T/NK Lymphocytes"),
+            Myeloid            = mean(cell_type_unified == "Myeloid"), .groups = "drop") %>%
+  tidyr::pivot_longer(-sample_id, names_to = "ct", values_to = "celltype_frac")
 
 cell_scores <- bind_rows(lapply(cts, function(ct) {
   obj <- subset(sc, subset = cell_type_unified == ct & m_group %in% c("MC", "MC+MS+MG"))
@@ -2546,67 +2549,56 @@ donor <- cell_scores %>%
             il17_in_n4like = if (sum(n4_like) >= min_n4like) mean(il17[n4_like]) else NA_real_,
             .groups = "drop") %>%
   filter(n_cells >= min_cells, !is.na(il17_in_n4like)) %>%
-  left_join(burden, by = "sample_id") %>%
+  left_join(burden, by = c("sample_id", "ct")) %>%
   arrange(ct, group, sample_id)
 
 # =========================================================
-# 3) stats: Wilcoxon + linear model adjusted for immune fraction
+# 3) stats: exact Wilcoxon + linear model adjusted for the abundance of the
+#    corresponding cell type (T/NK or myeloid fraction of all cells)
 # =========================================================
 stats <- donor %>%
   group_by(ct) %>%
   group_modify(~ {
-    fit <- summary(lm(il17_in_n4like ~ group + immune_frac, data = .x))$coefficients
-    data.frame(n_MC               = sum(.x$group == "MC"),
-               n_TMOS             = sum(.x$group == "TMOS"),
-               median_MC          = median(.x$il17_in_n4like[.x$group == "MC"]),
-               median_TMOS        = median(.x$il17_in_n4like[.x$group == "TMOS"]),
-               p_wilcox           = wilcox.test(il17_in_n4like ~ group, data = .x, exact = FALSE)$p.value,
-               TMOS_effect_adj    = fit["groupTMOS",   "Estimate"],
-               p_TMOS_adj         = fit["groupTMOS",   "Pr(>|t|)"],
-               immune_frac_effect = fit["immune_frac", "Estimate"],
-               p_immune_frac      = fit["immune_frac", "Pr(>|t|)"])
+    fit <- summary(lm(il17_in_n4like ~ group + celltype_frac, data = .x))$coefficients
+    data.frame(n_MC                 = sum(.x$group == "MC"),
+               n_TMOS               = sum(.x$group == "TMOS"),
+               median_MC            = median(.x$il17_in_n4like[.x$group == "MC"]),
+               median_TMOS          = median(.x$il17_in_n4like[.x$group == "TMOS"]),
+               p_wilcox             = wilcox.test(il17_in_n4like ~ group, data = .x)$p.value,
+               TMOS_effect_adj      = fit["groupTMOS",     "Estimate"],
+               p_TMOS_adj           = fit["groupTMOS",     "Pr(>|t|)"],
+               celltype_frac_effect = fit["celltype_frac", "Estimate"],
+               p_celltype_frac      = fit["celltype_frac", "Pr(>|t|)"])
   }) %>% ungroup()
 print(stats)
 
 # =========================================================
-# 4) figures
+# 4) Fig 4K: donor-level score in N4-like T/NK (left) and myeloid (right) cells
 # =========================================================
-fmt_p <- function(p) ifelse(p < 0.001, "p < 0.001", paste0("p = ", formatC(p, format = "f", digits = 3)))
+fmt_p <- function(p) ifelse(p < 0.001, "p < 0.001", paste0("p = ", sprintf("%.3f", p)))
+ylab  <- "IL-17 signaling-related program\n(N4-like cells, donor mean)"
 
-lab_box <- stats %>%
-  left_join(donor %>% group_by(ct) %>%
-              summarise(ymax = max(il17_in_n4like), yr = diff(range(il17_in_n4like)), .groups = "drop"),
-            by = "ct") %>%
-  mutate(y = ymax + 0.12 * yr,
-         label = paste0("Wilcoxon ", fmt_p(p_wilcox), "\nAdjusted ", fmt_p(p_TMOS_adj)))
+make_box <- function(cell_type) {
+  d  <- filter(donor, ct == cell_type)
+  st <- filter(stats, ct == cell_type)
+  yr <- range(d$il17_in_n4like); ypad <- diff(yr) * 0.28
+  ggplot(d, aes(group, il17_in_n4like, fill = group)) +
+    geom_boxplot(outlier.shape = NA, alpha = 0.55, width = 0.6) +
+    geom_jitter(aes(color = group), width = 0.12, size = 2.2, show.legend = FALSE) +
+    annotate("text", x = 0.55, y = yr[2] + ypad * 0.85, hjust = 0, size = 3,
+             label = paste0("Wilcoxon ", fmt_p(st$p_wilcox), "\nAdjusted ", fmt_p(st$p_TMOS_adj))) +
+    scale_fill_manual(values = grp_cols) + scale_color_manual(values = grp_cols) +
+    scale_x_discrete(labels = c(MC = "MC\nalone", TMOS = "TMOS")) +
+    scale_y_continuous(expand = expansion(mult = c(0.08, 0.30))) +
+    facet_wrap(~ ct) + labs(x = NULL, y = ylab) +
+    theme_bw(base_size = 11) +
+    theme(legend.position = "none", panel.grid.minor = element_blank(),
+          strip.background = element_rect(fill = "grey95"))
+}
 
-p_box <- ggplot(donor, aes(group, il17_in_n4like, fill = group)) +
-  geom_boxplot(outlier.shape = NA, alpha = 0.7, width = 0.6) +
-  geom_jitter(width = 0.12, size = 2.2, shape = 21, color = "black", stroke = 0.3) +
-  geom_text(data = lab_box, aes(x = 1.5, y = y, label = label),
-            inherit.aes = FALSE, size = 3, lineheight = 0.9) +
-  scale_fill_manual(values = grp_cols) +
-  scale_y_continuous(expand = expansion(mult = c(0.05, 0.25))) +
-  facet_wrap(~ ct, scales = "free_y") +
-  labs(x = NULL, y = "IL-17/MAPK module score\n(N4-like cells, donor mean)") +
-  theme_bw(base_size = 11) +
-  theme(legend.position = "none", panel.grid.minor = element_blank(),
-        strip.background = element_rect(fill = "grey95"))
-ggsave("IL17MAPK_N4like_TMOS_vs_MC_boxplot.pdf", p_box, width = 7, height = 3)
-
-p_sc <- ggplot(donor, aes(immune_frac, il17_in_n4like, color = group)) +
-  geom_smooth(method = "lm", se = FALSE, linewidth = 0.7) +
-  geom_point(size = 2.5) +
-  scale_color_manual(values = grp_cols) +
-  facet_wrap(~ ct, scales = "free_y") +
-  labs(x = "Immune fraction (myeloid + T/NK of all cells)",
-       y = "IL-17/MAPK module score\n(N4-like cells, donor mean)", color = NULL) +
-  theme_bw(base_size = 11) +
-  theme(panel.grid.minor = element_blank(), strip.background = element_rect(fill = "grey95"))
-ggsave("IL17MAPK_N4like_vs_immune_fraction.pdf", p_sc, width = 7, height = 3)
-
-
-
+ggsave("Fig4K_N4like_TNK_Myeloid.pdf",
+       make_box("T/NK Lymphocytes") + make_box("Myeloid"),
+       width = 6.4, height = 3.4)
 
 # =========================================================
 # 5) Excel
@@ -2619,8 +2611,8 @@ settings <- data.frame(
             "Seurat AddModuleScore (seed = 1), within each cell type",
             paste0("Top ", n4_top_frac * 100, "% of 64-gene N4 signature score within each cell type (MC + TMOS cells)"),
             min_cells, min_n4like,
-            "Wilcoxon rank-sum (two-sided)",
-            "Linear model: score ~ group + immune fraction")
+            "Wilcoxon rank-sum (two-sided, exact)",
+            "Linear model: score ~ group + fraction of the corresponding cell type among all cells")
 )
 
 wb <- createWorkbook()
@@ -2635,9 +2627,9 @@ add_sheet("Stats",        stats)
 add_sheet("Donor_values", donor)
 add_sheet("Settings",     settings)
 add_sheet("Genes_found",  genes_found)
-add_sheet("Gene_sets",    data.frame(IL17_MAPK_module = c(module_genes, rep(NA, length(n4_genes) - length(module_genes))),
-                                     N4_signature     = n4_genes))
-saveWorkbook(wb, "IL17MAPK_N4like_TMOS_vs_MC.xlsx", overwrite = TRUE)
+add_sheet("Gene_sets",    data.frame(IL17_program = c(module_genes, rep(NA, length(n4_genes) - length(module_genes))),
+                                     N4_signature = n4_genes))
+saveWorkbook(wb, "Fig4K_N4like_TNK_Myeloid_TMOS_vs_MC.xlsx", overwrite = TRUE)
 
 
 ## end of Part 5
