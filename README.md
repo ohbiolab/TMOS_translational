@@ -84,11 +84,10 @@ The figure scripts start from processed Seurat and Xenium objects (QC-filtered, 
 | **Figure S4** | |
 | S4A | `fig4/Fig4_all_panels.R` (Part 1) |
 | S4B, S4D | `fig4/Fig4_all_panels.R` (Part 2a) |
-| S4I | `fig4/Fig4_all_panels.R` (Part 2b) |
 | S4C | `fig4/Fig4_all_panels.R` (Part 7) |
 | S4E, S4G | `fig4/Fig4_all_panels.R` (Part 6) |
 | S4F | `fig4/Fig4_all_panels.R` (Part 8) |
-| S4H | `fig4/Fig4_all_panels.R` (Part 5) |
+| S4H | `fig4/Fig4_all_panels.R` (Part 2b) |
 | **Figure S5** | |
 | S5A, S5B | `fig4/Fig4_all_panels.R` (Part 4a) |
 | S5C–S5G | `fig4/Fig4_all_panels.R` (Part 4b) |
@@ -126,4 +125,3 @@ Processed objects are not included in this repository. Patient-level clinical da
 ## Contact
 
 Hassan Abushukair, University of Oklahoma Health Sciences Center.
-Tae Gyu Oh, University of Oklahoma Health Sciences Center.
